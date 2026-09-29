@@ -2,4 +2,4 @@
 __pycache__/
 *.pyc
 .env
-.vscode/
+.vscode/cleaned_job_postings.csv
