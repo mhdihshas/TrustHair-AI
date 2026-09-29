@@ -53,8 +53,16 @@ def init_db():
 
         conn.commit()
 
+    _db_initialized = False
 
-init_db()
+@app.before_request
+def ensure_database():
+    global _db_initialized
+
+    if not _db_initialized:
+        init_db()
+        _db_initialized = True
+
 
 # --- LOAD AI MODEL ---
 try:
@@ -337,25 +345,31 @@ def get_stats():
 def delete_scan(scan_id):
     if not session.get('logged_in'):
         return jsonify({'error': 'Unauthorized'}), 403
-        
+
     try:
         current_user = session.get('username')
-        conn = sqlite3.connect('scans.db')
-        cursor = conn.cursor()
-        
-        # Security Verification: Must match both scan ID and active session owner name
-        cursor.execute("""
-            DELETE FROM job_scans
-            WHERE id = ?
-            AND scanned_by = ?
-        """, (scan_id, current_user))
 
-        conn.commit()
-        conn.close()
-        
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    DELETE FROM job_scans
+                    WHERE id = %s
+                    AND scanned_by = %s
+                """, (
+                    scan_id,
+                    current_user
+                ))
+
+            conn.commit()
+
         return jsonify({'success': True})
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print("Delete error:", e)
+
+        return jsonify({
+            'error': 'Database error'
+        }), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
