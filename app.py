@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import joblib
-import sqlite3
 import datetime
 import traceback
 import os
+import psycopg
+
+from psycopg.rows import dict_row
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.environ.get(
@@ -11,30 +14,45 @@ app.secret_key = os.environ.get(
     "local-secret-key"
 )
 
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL or POSTGRES_URL is not configured")
+
 # --- DATABASE SETUP ---
+def get_db():
+    return psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row
+    )
+
+
 def init_db():
-    conn = sqlite3.connect('scans.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS job_scans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            job_text TEXT,
-            risk_score REAL,
-            is_fake BOOLEAN,
-            scanned_by TEXT
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT,
-            role TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT DEFAULT 'user'
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS job_scans (
+                    id SERIAL PRIMARY KEY,
+                    timestamp TEXT,
+                    job_text TEXT,
+                    risk_score REAL,
+                    is_fake BOOLEAN,
+                    scanned_by TEXT
+                )
+            """)
+
+        conn.commit()
+
 
 init_db()
 
@@ -70,42 +88,95 @@ def signup_page():
 
 @app.route('/api/signup', methods=['POST'])
 def do_signup():
-    data = request.json
+    data = request.get_json(silent=True) or {}
+
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
-    
+
     if not username or not password:
-        return jsonify({'error': 'Fields cannot be blank.'}), 400
-        
+        return jsonify({
+            'error': 'Fields cannot be blank.'
+        }), 400
+
     try:
-        conn = sqlite3.connect('scans.db')
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, password, 'user'))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Username is already registered.'}), 400
+        password_hash = generate_password_hash(password)
+
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+
+                cursor.execute("""
+                    INSERT INTO users
+                    (username, password_hash, role)
+                    VALUES (%s, %s, %s)
+                """, (
+                    username,
+                    password_hash,
+                    'user'
+                ))
+
+            conn.commit()
+
+        return jsonify({
+            'success': True
+        })
+
+    except psycopg.errors.UniqueViolation:
+
+        return jsonify({
+            'error': 'Username is already registered.'
+        }), 400
+
+    except Exception as e:
+
+        print("Signup error:", e)
+
+        return jsonify({
+            'error': 'Database error. Please try again.'
+        }), 500
 
 @app.route('/api/login', methods=['POST'])
 def do_login():
-    data = request.json
+    data = request.get_json(silent=True) or {}
+
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
-    
-    conn = sqlite3.connect('scans.db')
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user:
-        session['logged_in'] = True
-        session['username'] = user['username']
-        return jsonify({'success': True})
-    else:
-        return jsonify({'error': 'Invalid credentials.'}), 401
+
+    try:
+
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+
+                cursor.execute("""
+                    SELECT *
+                    FROM users
+                    WHERE username = %s
+                """, (username,))
+
+                user = cursor.fetchone()
+
+        if user and check_password_hash(
+            user['password_hash'],
+            password
+        ):
+
+            session['logged_in'] = True
+            session['username'] = user['username']
+
+            return jsonify({
+                'success': True
+            })
+
+        return jsonify({
+            'error': 'Invalid credentials.'
+        }), 401
+
+    except Exception as e:
+
+        print("Login error:", e)
+
+        return jsonify({
+            'error': 'Database error.'
+        }), 500
 
 @app.route('/logout')
 def logout():
@@ -155,14 +226,27 @@ def predict_job():
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         short_text = job_text[:100] + "..." if len(job_text) > 100 else job_text
         
-        conn = sqlite3.connect('scans.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO job_scans (timestamp, job_text, risk_score, is_fake, scanned_by)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (current_time, short_text, risk_score_native, is_fake_native, session.get('username')))
-        conn.commit()
-        conn.close()
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO job_scans
+                    (
+                        timestamp,
+                        job_text,
+                        risk_score,
+                        is_fake,
+                        scanned_by
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    current_time,
+                    short_text,
+                    risk_score_native,
+                    is_fake_native,
+                    session.get('username')
+                ))
+
+            conn.commit()
         
         return jsonify({
             'is_fake': is_fake_native,
@@ -175,52 +259,76 @@ def predict_job():
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
+
     if not session.get('logged_in'):
         return jsonify({'error': 'Unauthorized'}), 403
-        
+
     try:
+
         current_user = session.get('username')
-        conn = sqlite3.connect('scans.db')
-        conn.row_factory = sqlite3.Row 
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM job_scans WHERE scanned_by = ? ORDER BY id DESC LIMIT 10', (current_user,))
-        rows = cursor.fetchall()
-        conn.close()
-        return jsonify([dict(row) for row in rows])
+
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+
+                cursor.execute("""
+                    SELECT *
+                    FROM job_scans
+                    WHERE scanned_by = %s
+                    ORDER BY id DESC
+                    LIMIT 10
+                """, (current_user,))
+
+                rows = cursor.fetchall()
+
+        return jsonify(rows)
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
+        print("History error:", e)
+
+        return jsonify({
+            'error': 'Database error'
+        }), 500
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+
     if not session.get('logged_in'):
         return jsonify({'error': 'Unauthorized'}), 403
-        
+
     try:
+
         current_user = session.get('username')
-        conn = sqlite3.connect('scans.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT 
-                COUNT(*), 
-                SUM(CASE WHEN is_fake = 1 THEN 1 ELSE 0 END), 
-                SUM(CASE WHEN is_fake = 0 THEN 1 ELSE 0 END) 
-            FROM job_scans 
-            WHERE scanned_by = ?
-        ''', (current_user,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        total_scans = row[0] if row[0] is not None else 0
-        threats = row[1] if row[1] is not None else 0
-        safe = row[2] if row[2] is not None else 0
-        
+
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER
+                        (WHERE is_fake = TRUE) AS threats,
+                        COUNT(*) FILTER
+                        (WHERE is_fake = FALSE) AS safe
+                    FROM job_scans
+                    WHERE scanned_by = %s
+                """, (current_user,))
+
+                row = cursor.fetchone()
+
         return jsonify({
-            'total_scans': total_scans,
-            'threats': threats,
-            'safe': safe
+            'total_scans': row['total'] or 0,
+            'threats': row['threats'] or 0,
+            'safe': row['safe'] or 0
         })
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+
+        print("Stats error:", e)
+
+        return jsonify({
+            'error': 'Database error'
+        }), 500
 
 # ==========================================
 # DATA ERASE SECURITY GATEWAY
@@ -236,7 +344,12 @@ def delete_scan(scan_id):
         cursor = conn.cursor()
         
         # Security Verification: Must match both scan ID and active session owner name
-        cursor.execute('DELETE FROM job_scans WHERE id = ? AND scanned_by = ?', (scan_id, current_user))
+        cursor.execute("""
+            DELETE FROM job_scans
+            WHERE id = ?
+            AND scanned_by = ?
+        """, (scan_id, current_user))
+
         conn.commit()
         conn.close()
         

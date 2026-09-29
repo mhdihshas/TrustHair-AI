@@ -4,3 +4,5 @@ __pycache__/
 .env
 .vscode/cleaned_job_postings.csv
 cleaned_job_postings.csv
+scans.db
+*.db
