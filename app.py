@@ -53,7 +53,9 @@ def init_db():
 
         conn.commit()
 
-    _db_initialized = False
+
+_db_initialized = False
+
 
 @app.before_request
 def ensure_database():
