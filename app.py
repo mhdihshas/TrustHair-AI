@@ -7,6 +7,8 @@ import psycopg
 
 from psycopg.rows import dict_row
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+load_dotenv(".env.local")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get(

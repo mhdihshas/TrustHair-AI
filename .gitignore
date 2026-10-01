@@ -6,3 +6,6 @@ __pycache__/
 cleaned_job_postings.csv
 scans.db
 *.db
+.vercel
+.env*
+.env.local

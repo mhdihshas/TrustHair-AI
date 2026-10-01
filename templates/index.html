@@ -832,6 +832,186 @@
             border-color: var(--primary);
             box-shadow: 0 0 10px var(--primary-glow);
         }
+
+        /* =========================
+   MOBILE RESPONSIVE DESIGN
+   ========================= */
+
+@media (max-width: 768px) {
+
+    body {
+        overflow-x: hidden;
+    }
+
+    .app-container {
+        flex-direction: column;
+    }
+
+    /* Sidebar becomes top navigation */
+    .sidebar {
+        width: 100%;
+        padding: 1rem;
+        border-right: none;
+        border-bottom: 1px solid var(--card-border);
+        flex-direction: column;
+        position: relative;
+    }
+
+    .operator-panel {
+        padding-bottom: 1rem;
+        margin-bottom: 1rem;
+        justify-content: center;
+    }
+
+    .nav-menu {
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    .nav-item {
+        min-width: max-content;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.8rem;
+    }
+
+    .logout-btn-container {
+        border-top: none;
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .logout-link {
+        justify-content: center;
+        padding: 0.7rem;
+    }
+
+    /* Main area */
+    .main-content {
+        max-width: 100%;
+        width: 100%;
+        padding: 1rem;
+    }
+
+    /* Stats */
+    .top-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .metric-box {
+        padding: 1rem;
+    }
+
+    .metric-val {
+        font-size: 1.2rem;
+    }
+
+    .metric-lbl {
+        font-size: 0.62rem;
+    }
+
+    /* Analyzer */
+    .analyzer-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .card {
+        padding: 1rem;
+        border-radius: 12px;
+    }
+
+    .card h2 {
+        font-size: 0.85rem;
+        letter-spacing: 1px;
+    }
+
+    textarea {
+        min-height: 220px;
+        font-size: 0.85rem;
+        padding: 1rem;
+    }
+
+    button.action-btn {
+        font-size: 0.85rem;
+        padding: 0.9rem;
+    }
+
+    /* Results */
+    .results-wrapper {
+        min-height: 280px;
+    }
+
+    .radial-progress-container {
+        width: 120px;
+        height: 120px;
+    }
+
+    .radial-value {
+        font-size: 1.2rem;
+    }
+
+    /* Terminal */
+    .terminal-console {
+        padding: 1.2rem;
+        min-height: 300px;
+    }
+
+    .terminal-line {
+        font-size: 0.8rem;
+        word-break: break-word;
+    }
+
+    /* Tables */
+    .table-container {
+        overflow-x: auto;
+        width: 100%;
+    }
+
+    table {
+        min-width: 650px;
+    }
+    }
+
+    @media (max-width: 480px) {
+
+    .top-metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .main-content {
+        padding: 0.75rem;
+    }
+
+    .card {
+        padding: 0.85rem;
+    }
+
+    .sidebar {
+        padding: 0.75rem;
+    }
+
+    .nav-item {
+        font-size: 0.75rem;
+        padding: 0.65rem 0.8rem;
+    }
+
+    textarea {
+        min-height: 180px;
+    }
+
+    .status-badge {
+        font-size: 0.7rem;
+        padding: 0.5rem 0.8rem;
+    }
+
+    .bar-label-row {
+        font-size: 0.7rem;
+    }
+}
     </style>
 </head>
 <body>
